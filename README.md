@@ -125,8 +125,8 @@ The dataset can be downloaded from [Kaggle - LAPA Face Parsing Dataset](https://
 ### Prerequisites
 
 - Python 3.7 or higher
-- CUDA-capable GPU (recommended for training)
-- 8GB+ RAM
+- CUDA-capable GPU (recommended for training, but CPU training is also supported - just slower)
+- 8GB+ RAM (16GB+ recommended for GPU training)
 
 ### Step 1: Clone the Repository
 
