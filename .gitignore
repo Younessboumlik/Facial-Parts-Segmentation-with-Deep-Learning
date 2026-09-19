@@ -13,3 +13,6 @@ venv/
 LaPa/
 lapa/
 *.tar.gz
+
+# Private working notes - never published
+NOTES.private.md

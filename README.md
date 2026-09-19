@@ -1,12 +1,15 @@
 # 🎭 Facial Parts Segmentation with Deep Learning
 
-[![Python](https://img.shields.io/badge/Python-3.7+-blue.svg)](https://www.python.org/downloads/)
-[![TensorFlow](https://img.shields.io/badge/TensorFlow-2.x-orange.svg)](https://www.tensorflow.org/)
+[![Live Demo](https://img.shields.io/badge/▶_Live_Demo-Streamlit-FF4B4B.svg)](https://facial-parts-segmentation.streamlit.app/)
+[![Models](https://img.shields.io/badge/🤗_Models-Hugging_Face-FFD21E.svg)](https://huggingface.co/YounessBoumlik/face-segmentation-models)
+[![Python](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![TensorFlow](https://img.shields.io/badge/TensorFlow-2.20-orange.svg)](https://www.tensorflow.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 <div align="center">
   <h3>Comparative Analysis of Deep Learning Architectures for Facial Feature Segmentation</h3>
   <p><i>A comprehensive study comparing U-Net, PSPNet, and SegNet for pixel-wise facial parts segmentation</i></p>
+  <p><b><a href="https://facial-parts-segmentation.streamlit.app/">▶ Try the live demo</a></b> &nbsp;·&nbsp; upload a portrait and segment it with any of the three models</p>
 </div>
 
 ---
@@ -164,8 +167,13 @@ The training notebook includes code to download the LAPA dataset automatically u
 
 ## 🚀 Live Demo
 
-An interactive Streamlit app (`app.py`): upload a portrait, pick a model (or
-compare all three), and get the segmentation mask plus an adjustable overlay.
+### ▶ [facial-parts-segmentation.streamlit.app](https://facial-parts-segmentation.streamlit.app/)
+
+The app is deployed and ready to use — no setup required. Upload a portrait, pick
+a model (or compare all three side by side), and get the segmentation mask plus an
+adjustable overlay.
+
+To run it locally instead (`app.py`):
 
 The three `.keras` files total ~1 GB, too large for GitHub, so they are hosted on
 the Hugging Face Hub and downloaded at runtime:
@@ -396,6 +404,13 @@ validation images**, at 256×256, using the corrected per-class metrics in
 see the warning in [Evaluation Metrics](#-evaluation-metrics) for why those were
 wrong.
 
+**Training budget.** Each model was trained for **10 epochs at 256×256** on Kaggle's
+free GPU tier, within its session time limit. No data augmentation, no class
+weighting and no hyperparameter search were applied, and the learning-rate schedule
+was left at its default. Validation loss was still improving at the final epoch for
+all three models and no early-stopping trigger fired, so these results reflect a
+deliberately modest compute budget rather than converged models.
+
 ### Summary
 
 | Model | Mean IoU (no bg) | Mean Dice (no bg) | Pixel accuracy | Params | CPU inference |
@@ -432,9 +447,11 @@ inputs.
 ### Observations
 
 - **Region size drives the score.** Every model handles background, skin, hair
-  and nose well (0.83–0.98) and struggles on thin structures: the upper lip is
-  the worst class for all three (0.43–0.64). A few pixels of boundary error
-  barely move a large region's IoU but wreck a thin one's.
+  and nose strongly (0.83–0.98). Thin structures score lower — the upper lip is
+  the hardest class for all three (0.43–0.64) — because a few pixels of boundary
+  error barely move a large region's IoU but change a thin one's substantially.
+  This is the expected behaviour of IoU on narrow classes at 256×256 input
+  resolution, and is where additional resolution would pay off most.
 
 - **Left/right pairs score almost identically** (SegNet eyebrows: 0.6918 vs
   0.6899), indicating no systematic left–right confusion — a useful sanity check
