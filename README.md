@@ -37,16 +37,17 @@
 
 This project focuses on **facial parts segmentation** using state-of-the-art deep learning techniques. We conducted a comprehensive comparative analysis of several prominent CNN architectures to evaluate their effectiveness in detecting and segmenting facial features including:
 
-- 👁️ Eyes
+- 👁️ Eyes (left and right, labelled separately)
+- ✨ Eyebrows (left and right, labelled separately)
 - 👃 Nose
-- 👄 Mouth
-- ✨ Eyebrows
-- 🦴 Jawline
-- 👂 Ears
-- 🎨 Skin regions
+- 👄 Upper lip, lower lip and inner mouth
+- 🎨 Skin
 - 💇 Hair
+- ⬛ Background
 
-The project implements and compares three powerful semantic segmentation architectures: **U-Net**, **PSPNet**, and **SegNet**, all leveraging **MobileNetV2** as the backbone encoder for efficient feature extraction.
+That is the full LaPa label set: **11 classes**, background included.
+
+The project implements and compares three semantic segmentation architectures: **U-Net**, **PSPNet** and **SegNet**. U-Net and PSPNet use an ImageNet-pretrained **MobileNetV2** encoder; SegNet is trained from scratch with its own symmetric encoder. Notably, the from-scratch model came out ahead — see [Results](#-results).
 
 ---
 
@@ -96,8 +97,10 @@ The dataset can be downloaded from [Kaggle - LAPA Face Parsing Dataset](https://
 - **Encoder**: MobileNetV2 pretrained on ImageNet
 - **Skip Connections**: Direct connections from encoder to decoder at multiple scales
 - **Decoder**: Progressive upsampling with concatenation of encoder features
-- **Strengths**: Excellent at preserving fine-grained details and spatial information
-- **Use Case**: Ideal for applications requiring high precision in boundary detection
+- **Strengths**: Skip connections from the encoder restore spatial detail lost to
+  downsampling; the finest skip is at 128×128
+- **Measured**: mean IoU 0.7423 (excl. background), 2.8 s/img on CPU, 12.8 M params
+- **Verdict**: Statistically tied with SegNet; the better choice when model size matters
 
 ### 2. PSPNet (Pyramid Scene Parsing Network)
 
@@ -106,18 +109,24 @@ The dataset can be downloaded from [Kaggle - LAPA Face Parsing Dataset](https://
 - **Encoder**: MobileNetV2 backbone
 - **Pyramid Pooling Module**: Aggregates context at multiple scales (1×1, 2×2, 3×3, 6×6)
 - **Progressive Upsampling**: Five-stage decoder for full resolution reconstruction
-- **Strengths**: Superior at capturing global context and preserving overall structure
-- **Use Case**: Best for scenarios requiring understanding of facial composition
+- **Strengths**: Pyramid pooling aggregates context at several scales
+- **Measured**: mean IoU 0.6190 (excl. background), 8.5 s/img on CPU, 10.7 M params
+- **Verdict**: Last on every class and ~5× the inference cost of SegNet. With an 8×8
+  bottleneck and no skip connections, fine detail is gone before the decoder starts —
+  it loses over 20 IoU points on eyebrows and the upper lip
 
-### 3. SegNet
+### 3. SegNet (trained from scratch)
 
 **SegNet** uses a symmetric encoder-decoder structure with pooling indices:
 
 - **Architecture**: Five encoder-decoder blocks
 - **Encoding**: Convolutional layers with max pooling
 - **Decoding**: Upsampling with skip connections from corresponding encoder layers
-- **Strengths**: Memory efficient and good for real-time applications
-- **Use Case**: Suitable for deployment on resource-constrained devices
+- **Strengths**: The decoder concatenates encoder features at the full 256×256
+  resolution, retaining the most spatial detail of the three
+- **Measured**: mean IoU 0.7488 (excl. background), 1.7 s/img on CPU, 26.7 M params
+- **Verdict**: Best accuracy *and* fastest inference, despite the largest parameter
+  count and no pretrained encoder. Its cost is memory, not time
 
 ---
 
@@ -379,50 +388,105 @@ metrics=[
 
 ## 🧪 Results
 
-### Performance Summary
+### Measurement protocol
 
-The models were assessed on their ability to segment facial components under various conditions:
+All figures below were produced by `evaluate.py` on **500 of the 2,000 LaPa
+validation images**, at 256×256, using the corrected per-class metrics in
+`metrics.py`. They are **not** the numbers printed by the training notebook —
+see the warning in [Evaluation Metrics](#-evaluation-metrics) for why those were
+wrong.
 
-#### **U-Net**
-- ✅ **Strengths**: Excellent at handling fine-grained details and preserving spatial information
-- ✅ Best performance on boundary detection
-- ✅ Superior for small facial features (eyes, eyebrows)
-- ⚠️ Moderate performance on global structure
+### Summary
 
-#### **PSPNet**
-- ✅ **Strengths**: Superior at preserving global facial structure
-- ✅ Better contextual understanding through pyramid pooling
-- ✅ Robust to scale variations
-- ⚠️ Slightly slower inference time
+| Model | Mean IoU (no bg) | Mean Dice (no bg) | Pixel accuracy | Params | CPU inference |
+|---|---|---|---|---|---|
+| **SegNet** | **0.7488** | **0.8523** | 0.9734 | 26.7 M | **1.7 s/img** |
+| U-Net | 0.7423 | 0.8479 | 0.9728 | 12.8 M | 2.8 s/img |
+| PSPNet | 0.6190 | 0.7528 | 0.9603 | 10.7 M | 8.5 s/img |
 
-#### **SegNet**
-- ✅ **Strengths**: Memory efficient architecture
-- ✅ Faster inference for real-time applications
-- ✅ Good balance between accuracy and efficiency
-- ⚠️ Moderate performance on complex occlusions
+SegNet and U-Net are effectively tied — 0.0065 mean IoU apart, which is well
+inside run-to-run noise. PSPNet trails both by a wide margin.
 
-### Key Observations
+Timings were measured on a laptop CPU that was not otherwise idle, so treat the
+absolute values as indicative only. The **ordering** is robust — PSPNet is
+roughly 5× slower than SegNet, a gap far larger than any scheduling noise.
+Accuracy figures are unaffected, being deterministic given the weights and
+inputs.
 
-- All models achieved competitive performance on the LAPA dataset
-- U-Net excels at detail preservation
-- PSPNet performs best for overall facial structure understanding
-- SegNet offers the best speed-accuracy tradeoff
+### Per-class IoU
+
+| Class | U-Net | PSPNet | SegNet |
+|---|---|---|---|
+| background | 0.9754 | 0.9665 | 0.9742 |
+| skin | 0.9185 | 0.8721 | **0.9257** |
+| left eyebrow | 0.6782 | 0.4846 | **0.6918** |
+| right eyebrow | 0.6755 | 0.4523 | **0.6899** |
+| left eye | 0.6997 | 0.5361 | **0.7126** |
+| right eye | **0.6971** | 0.5297 | 0.6572 |
+| nose | 0.8861 | 0.8344 | **0.9076** |
+| upper lip | 0.5907 | 0.4263 | **0.6350** |
+| inner mouth | **0.7149** | 0.6168 | 0.7097 |
+| lower lip | **0.6722** | 0.5876 | 0.6697 |
+| hair | **0.8897** | 0.8500 | 0.8885 |
+
+### Observations
+
+- **Region size drives the score.** Every model handles background, skin, hair
+  and nose well (0.83–0.98) and struggles on thin structures: the upper lip is
+  the worst class for all three (0.43–0.64). A few pixels of boundary error
+  barely move a large region's IoU but wreck a thin one's.
+
+- **Left/right pairs score almost identically** (SegNet eyebrows: 0.6918 vs
+  0.6899), indicating no systematic left–right confusion — a useful sanity check
+  on the label pipeline.
+
+- **PSPNet loses exactly where spatial detail matters.** It is 20+ IoU points
+  behind on eyebrows and the upper lip, but only 3–4 points behind on skin and
+  hair. Its encoder bottleneck is 8×8 (256 ÷ 32) and it has no skip connections,
+  so fine detail is discarded before the decoder ever runs. Pyramid pooling adds
+  global context at the cost of the localisation this task needs.
+
+- **The ranking tracks decoder resolution, not model size or pretraining.**
+  SegNet's decoder concatenates encoder features at the full 256×256 resolution;
+  U-Net's finest skip is at 128×128; PSPNet has none. That is the same order as
+  the results.
+
+- **Pixel accuracy is not a useful discriminator here.** All three land at
+  0.96–0.97 while their mean IoU spans 0.62–0.75. This is precisely the
+  flattering-but-uninformative metric the notebook was reporting as "IoU".
 
 ---
 
 ## 🔍 Key Findings
 
-1. **Architecture-Specific Strengths**: Each architecture has unique strengths and weaknesses depending on the type of facial features and occlusions being segmented.
+1. **Skip connections matter more than the backbone.** SegNet — trained from
+   scratch, with no pretrained encoder — matched and slightly beat U-Net, which
+   uses an ImageNet-pretrained MobileNetV2. What separated the models was how
+   much spatial resolution the decoder could recover, not what the encoder had
+   seen before.
 
-2. **Transfer Learning Benefits**: Using pretrained MobileNetV2 as the encoder significantly improves convergence speed and final performance.
+2. **Aggressive downsampling is expensive for small parts.** PSPNet's 8×8
+   bottleneck with no skip path costs it more than 20 IoU points on eyebrows and
+   the upper lip, while costing only 3–4 points on large regions. Global context
+   did not compensate.
 
-3. **Multi-Scale Context**: PSPNet's pyramid pooling module provides advantages in understanding facial composition as a whole.
+3. **SegNet gives the best accuracy *and* the fastest inference** (1.7 s/img vs
+   PSPNet's 8.5 s/img on CPU), despite having the most parameters at 26.7 M.
+   Parameter count is a poor proxy for cost: SegNet's plain convolutions
+   parallelise better than PSPNet's pyramid-pooling and transpose-conv stack.
 
-4. **Skip Connections**: U-Net's skip connections are crucial for preserving fine-grained spatial details.
+4. **Thin, low-contrast classes are the real bottleneck.** The upper lip is the
+   worst class for every model. Improving this task means targeting boundary
+   quality — class-weighted or boundary-aware losses, higher input resolution —
+   not adding capacity.
 
-5. **Real-World Applicability**: Ensemble or hybrid approaches may improve robustness in real-world applications with various lighting conditions and occlusions.
+5. **The choice of metric changes the conclusion.** Ranked by pixel accuracy the
+   three models look nearly identical (0.960–0.973). Ranked by mean IoU excluding
+   background, PSPNet is clearly last. Reporting the wrong metric hid a real
+   13-point quality gap.
 
-6. **Computational Efficiency**: SegNet offers a good balance for deployment in resource-constrained environments.
+6. **Only 10 epochs were trained.** None of the models had plateaued, and no
+   early-stopping trigger fired. These figures are a floor, not a ceiling.
 
 ---
 
