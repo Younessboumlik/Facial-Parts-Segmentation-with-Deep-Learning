@@ -120,7 +120,7 @@ The dataset can be downloaded from [Kaggle - LAPA Face Parsing Dataset](https://
 
 ### 3. SegNet (trained from scratch)
 
-**SegNet** uses a symmetric encoder-decoder structure with pooling indices:
+**SegNet** uses a symmetric encoder-decoder structure, the decoder mirroring the encoder stage for stage:
 
 - **Architecture**: Five encoder-decoder blocks
 - **Encoding**: Convolutional layers with max pooling
