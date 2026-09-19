@@ -19,6 +19,7 @@
 - [Dataset](#-dataset)
 - [Models & Architectures](#-models--architectures)
 - [Installation](#-installation)
+- [Live Demo](#-live-demo)
 - [Usage](#-usage)
 - [Project Structure](#-project-structure)
 - [Methodology](#%EF%B8%8F-methodology)
@@ -152,11 +153,48 @@ The training notebook includes code to download the LAPA dataset automatically u
 
 ---
 
+## 🚀 Live Demo
+
+An interactive Streamlit app (`app.py`): upload a portrait, pick a model (or
+compare all three), and get the segmentation mask plus an adjustable overlay.
+
+The three `.keras` files total ~1 GB, too large for GitHub, so they are hosted on
+the Hugging Face Hub and downloaded at runtime:
+
+**🤗 [YounessBoumlik/face-segmentation-models](https://huggingface.co/YounessBoumlik/face-segmentation-models)**
+
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+The app opens at `http://localhost:8501`.
+
+To use a different repo, edit `DEFAULT_REPO_ID` in `app.py`, use the sidebar
+field, or create `.streamlit/secrets.toml`:
+
+```toml
+HF_REPO_ID = "YounessBoumlik/face-segmentation-models"
+# HF_TOKEN = "hf_..."   # only needed if the repo is private
+```
+
+A local `models/` directory, if present, takes priority over the Hub download.
+
+**Implementation notes**
+
+- Inputs are resized to 256×256 and kept in **BGR** order to match the training
+  pipeline, which used `cv2.imread` without an RGB conversion.
+- Models load with `compile=False`, so the notebook's custom metrics are not needed.
+- Only one model is held in memory at a time, keeping the app inside the free
+  Streamlit Cloud memory limit. CPU inference takes a few seconds per image.
+
+---
+
 ## 💻 Usage
 
 ### Training Models
 
-The project includes a comprehensive Jupyter notebook (`training-source-code.ipynb`) that contains all the code for:
+The project includes a comprehensive Jupyter notebook (`training.ipynb`) that contains all the code for:
 
 1. **Dataset Loading**: Automatic download and preprocessing
 2. **Model Building**: Implementation of all three architectures
@@ -166,7 +204,7 @@ The project includes a comprehensive Jupyter notebook (`training-source-code.ipy
 #### Running the Training Notebook
 
 ```bash
-jupyter notebook training-source-code.ipynb
+jupyter notebook training.ipynb
 ```
 
 Or upload to [Kaggle Notebooks](https://www.kaggle.com/code) for GPU acceleration.
@@ -234,18 +272,17 @@ visualize_predictions(
 ```
 Facial-Parts-Segmentation-with-Deep-Learning/
 │
-├── training-source-code.ipynb    # Main training notebook with all implementations
-├── report.pdf                     # Detailed project report
-├── README.md                      # This file
-├── .gitattributes                 # Git attributes configuration
+├── training.ipynb          # Training notebook (all three models, with outputs)
+├── app.py                  # Streamlit demo
+├── metrics.py              # Correct per-class segmentation metrics
+├── evaluate.py             # Scores saved weights on the LaPa validation set
+├── requirements.txt        # Python dependencies
+├── report.pdf              # Detailed project report
+├── README.md               # This file
 │
-└── files/                         # Generated during training
-    ├── unet_model.keras          # Trained U-Net model
-    ├── pspnet_model.keras        # Trained PSPNet model
-    ├── segnet_model.keras        # Trained SegNet model
-    ├── unet_data.csv             # U-Net training logs
-    ├── pspnet_data.csv           # PSPNet training logs
-    └── segnet_data.csv           # SegNet training logs
+├── models/                 # Git-ignored. Optional local copy of the weights;
+│                           # otherwise fetched from the Hugging Face Hub
+└── LaPa/                   # Git-ignored. Dataset, downloaded not committed
 ```
 
 ---
@@ -281,29 +318,62 @@ Our comprehensive approach includes:
 
 ## 📊 Evaluation Metrics
 
-We employ multiple metrics to comprehensively evaluate model performance:
+> ⚠️ **Important correction.** The metric functions inside the training notebook
+> (`iou`, `dice_coefficient`, `precision`, `recall`) are **not** correct
+> implementations. All four compare `argmax` equality across the whole image
+> without splitting by class, so `iou` is really global pixel accuracy,
+> `dice_coefficient` is exactly twice that value, and `precision`/`recall`
+> divide by a non-background pixel count and can exceed 1.0 — the training logs
+> show values around 1.9 and 3.0, which is impossible for a bounded metric.
+>
+> They were only ever *reported* alongside the loss, never optimised against
+> (training used `categorical_crossentropy`), so **the trained weights are
+> unaffected**. The corrected implementations live in `metrics.py`, and
+> `evaluate.py` recomputes real scores from the saved weights — no retraining
+> required.
 
-### 1. **IoU (Intersection over Union)**
-   - Measures overlap between predicted and ground truth masks
-   - Range: 0 (no overlap) to 1 (perfect overlap)
-   - Primary metric for segmentation quality
+Scores are computed **per class** from a confusion matrix accumulated over the
+whole validation set. For each class `c`:
 
-### 2. **Dice Coefficient**
-   - Similar to IoU but more sensitive to small regions
-   - Harmonic mean of precision and recall
-   - Range: 0 to 1
+- **TP** — pixels of class `c` predicted as `c`
+- **FP** — pixels of another class predicted as `c`
+- **FN** — pixels of class `c` predicted as something else
 
-### 3. **Precision**
-   - Measures accuracy of positive predictions
-   - Important for minimizing false positives
+| Metric | Formula | Interpretation |
+|---|---|---|
+| **IoU** (Jaccard) | `TP / (TP + FP + FN)` | Overlap ÷ combined area. The strictest measure |
+| **Dice** (F1) | `2·TP / (2·TP + FP + FN)` | Like IoU but more forgiving; always ≥ IoU |
+| **Precision** | `TP / (TP + FP)` | When the model predicts `c`, how often is it right |
+| **Recall** | `TP / (TP + FN)` | Of all true `c` pixels, how many were found |
 
-### 4. **Recall**
-   - Measures completeness of positive predictions
-   - Important for minimizing false negatives
+All are bounded in [0, 1]. The headline figure is **mean IoU excluding
+background**: background is roughly two thirds of every LaPa image, so including
+it inflates the average and hides poor performance on small parts such as the
+eyes and lips. Pixel accuracy and frequency-weighted IoU are reported as
+secondary figures.
 
-### 5. **Categorical Cross-Entropy Loss**
-   - Training objective function
-   - Measures pixel-wise classification accuracy
+### Re-evaluating the models
+
+```bash
+python evaluate.py                        # all three models, 200 val images
+python evaluate.py --limit 0              # the full validation set
+python evaluate.py --models unet segnet   # a subset
+python evaluate.py --data /path/to/LaPa   # skip the dataset download
+```
+
+Fetching the dataset needs `pip install kagglehub` (not required by the app, so
+it is not in `requirements.txt`); `--data` skips it if LaPa is already local.
+Results are written to `evaluation.md` and `evaluation.json`.
+
+For future training runs, do not reuse the notebook's metric functions — Keras
+ships a correct streaming implementation:
+
+```python
+metrics=[
+    tf.keras.metrics.OneHotMeanIoU(num_classes=11, name="mean_iou"),
+    tf.keras.metrics.CategoricalAccuracy(name="pixel_acc"),
+]
+```
 
 ---
 

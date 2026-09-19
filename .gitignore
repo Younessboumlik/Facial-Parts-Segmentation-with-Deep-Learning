@@ -1,0 +1,15 @@
+# Model weights live on the Hugging Face Hub, not in git (~1 GB total).
+models/
+
+# Streamlit secrets (may contain an HF token)
+.streamlit/secrets.toml
+
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Datasets are downloaded, never committed
+LaPa/
+lapa/
+*.tar.gz
