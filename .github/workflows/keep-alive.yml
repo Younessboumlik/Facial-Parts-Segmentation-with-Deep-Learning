@@ -24,13 +24,15 @@ jobs:
               page = browser.new_page()
               page.goto(URL, wait_until="domcontentloaded", timeout=60000)
               wake = page.get_by_role("button", name="Yes, get this app back up!")
-              if wake.count():
+              try:
+                  wake.wait_for(state="visible", timeout=20000)  # the sleep page is rendered by JavaScript
                   print("App was asleep: waking it up")
                   wake.click()
-                  page.wait_for_timeout(30000)
-              else:
+                  page.wait_for_timeout(45000)
+              except Exception:
                   print("App is awake")
-                  page.wait_for_timeout(8000)
+                  page.wait_for_timeout(10000)
+              print("Page title:", page.title())
               browser.close()
           EOF
         env:
